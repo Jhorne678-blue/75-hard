@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>75 Hard</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="75 Hard">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+:root{--bg:#0f1115;--card:#181b22;--line:#262a34;--text:#f2f3f5;--mute:#8b91a0;--acc:#ff6b35;--ok:#3ecf8e;--bad:#ff5d5d}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.4 -apple-system,system-ui,Segoe UI,Roboto,sans-serif;padding:env(safe-area-inset-top) 16px calc(24px + env(safe-area-inset-bottom))}
+main{max-width:480px;margin:0 auto;padding-top:16px}
+h1{font-size:15px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin:0 0 4px;font-weight:600}
+.day{font-size:56px;font-weight:800;line-height:1;margin:0}
+.day small{font-size:20px;color:var(--mute);font-weight:600}
+.bar{height:8px;background:var(--line);border-radius:99px;margin:14px 0 4px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--acc);border-radius:99px;transition:width .3s}
+.meta{color:var(--mute);font-size:13px;display:flex;justify-content:space-between}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-top:14px}
+.card.done{border-color:var(--ok)}
+.row{display:flex;align-items:center;gap:12px}
+.row h2{font-size:17px;margin:0;flex:1}
+.chk{width:30px;height:30px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;flex:none;font-size:18px;color:#0f1115}
+.done .chk{background:var(--ok);border-color:var(--ok)}
+.hint{color:var(--mute);font-size:13px;margin:6px 0 0}
+.warn{color:var(--bad);font-size:13px;margin:8px 0 0}
+.inputs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+label{font-size:12px;color:var(--mute);display:block}
+input[type=number]{width:100%;margin-top:4px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:18px}
+button,.btn{font:inherit;background:var(--acc);color:#fff;border:0;border-radius:12px;padding:12px 16px;font-weight:700;width:100%;margin-top:12px;display:block;text-align:center}
+button.ghost{background:transparent;border:1px solid var(--line);color:var(--mute)}
+.seg{display:flex;gap:8px;margin-top:12px}
+.seg button{margin:0;background:var(--bg);border:1px solid var(--line);color:var(--mute);font-weight:600}
+.seg button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.tap{cursor:pointer}
+.banner{background:#2a1d14;border:1px solid var(--acc);border-radius:16px;padding:14px 16px;margin-top:14px}
+.banner.bad{background:#2a1416;border-color:var(--bad)}
+.banner.good{background:#122a1f;border-color:var(--ok)}
+.photos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.photos figure{margin:0}
+.photos img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:10px;display:block}
+.photos figcaption{font-size:11px;color:var(--mute);text-align:center;margin-top:2px}
+input[type=text]{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:12px;font-size:17px}
+.foot{text-align:center;color:var(--mute);font-size:12px;margin-top:22px}
+a{color:var(--mute)}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<input type="file" id="cam" accept="image/*" capture="environment" hidden>
+<script>
+// ---------- storage ----------
+const KEY = 'seventyfive-v1';
+const DB = 'seventyfive-photos';
+const pad = n => String(n).padStart(2, '0');
+const fmt = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const parse = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); };
+const daysBetween = (a, b) => Math.round((parse(b) - parse(a)) / 864e5);
+const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate()+n); return fmt(d); };
+const today = () => fmt(new Date());
+
+let S = load();
+function load(){
+  try { const s = JSON.parse(localStorage.getItem(KEY)); if (s) return s; } catch(e){}
+  return { name:'', diet:'', startDate:null, log:{}, photos:[], attempts:1, best:0, notice:null };
+}
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){} }
+
+function openDB(){
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(DB, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('p', { keyPath:'id' });
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+}
+async function putPhoto(rec){ const db = await openDB(); return new Promise((res, rej) => { const t = db.transaction('p','readwrite'); t.objectStore('p').put(rec); t.oncomplete = res; t.onerror = () => rej(t.error); }); }
+async function allPhotos(){ const db = await openDB(); return new Promise((res, rej) => { const q = db.transaction('p').objectStore('p').getAll(); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
+async function clearPhotos(){ const db = await openDB(); return new Promise(res => { const t = db.transaction('p','readwrite'); t.objectStore('p').clear(); t.oncomplete = res; }); }
+
+// ---------- rules ----------
+const YOGA_MAX = 15, WORKOUT_MIN = 45, READ_PAGES = 10, READ_MIN = 10;
+const entry = d => S.log[d] || (S.log[d] = {});
+
+function workoutState(e){
+  const c = +e.cardio || 0, l = +e.lift || 0, y = +e.yoga || 0;
+  const total = c + l + y;
+  if (y > YOGA_MAX) return { ok:false, msg:`Yoga is capped at ${YOGA_MAX} min of the ${WORKOUT_MIN}. You went over, so the clock restarts: you need a fresh ${WORKOUT_MIN} min.`, restart:true, total };
+  if (total < WORKOUT_MIN) return { ok:false, msg:`${WORKOUT_MIN - total} min to go.`, total };
+  if (c <= 0 || l <= 0) return { ok:false, msg:`Needs some of both cardio and lifting.`, total };
+  return { ok:true, total };
+}
+const readOk = e => !!e.read;
+const dayComplete = e => !!(e && (e.diet || e.dayOff) && workoutState(e).ok && readOk(e));
+// One diet day off per 7-day block of the run (days 1-7, 8-14, ...).
+function dayOffUsed(dateStr){
+  const wk = Math.floor(daysBetween(S.startDate, dateStr) / 7);
+  return Object.keys(S.log).some(d => S.log[d].dayOff && Math.floor(daysBetween(S.startDate, d) / 7) === wk);
+}
+
+// Check every past day since startDate; any miss restarts at Day 1.
+function reconcile(){
+  if (!S.startDate) return;
+  const t = today();
+  for (let d = S.startDate; daysBetween(d, t) > 0 && daysBetween(S.startDate, d) < 75; d = addDays(d, 1)){
+    if (!dayComplete(S.log[d])){
+      const reached = daysBetween(S.startDate, d);
+      S.best = Math.max(S.best, reached);
+      S.attempts++;
+      S.notice = `You missed something on Day ${reached + 1} (${parse(d).toLocaleDateString(undefined,{month:'short',day:'numeric'})}). Back to Day 1. You made it ${reached} day${reached===1?'':'s'}.`;
+      S.startDate = t; S.log = {}; S.photos = [];
+      clearPhotos();
+      save(); return;
+    }
+  }
+}
+
+function photoDue(){
+  if (!S.photos.length) return true;
+  const last = S.photos[S.photos.length-1].date;
+  return daysBetween(last, today()) >= 7;
+}
+
+// ---------- ui ----------
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function render(){
+  if (!S.name || !S.diet){ return renderSetup(); }
+  if (!S.startDate){ S.startDate = today(); save(); }
+  reconcile();
+  const t = today();
+  const dayNum = daysBetween(S.startDate, t) + 1;
+  if (dayNum > 75) return renderDone();
+  const e = entry(t);
+  const w = workoutState(e);
+  const complete = dayComplete(e);
+  const due = photoDue();
+  const pics = await allPhotos();
+  const urls = pics.sort((a,b)=>a.id-b.id).map(p => ({ url:URL.createObjectURL(p.blob), label:`Day ${p.day}` }));
+
+  app.innerHTML = `
+    <h1>${esc(S.name)}'s 75 Hard</h1>
+    <p class="day">Day ${dayNum} <small>of 75</small></p>
+    <div class="bar"><i style="width:${((dayNum-1) + (complete?1:0)) / 75 * 100}%"></i></div>
+    <div class="meta"><span>${75 - dayNum} day${75-dayNum===1?'':'s'} left after today</span><span>Attempt ${S.attempts}${S.best?` · best ${S.best}`:''}</span></div>
+
+    ${S.notice ? `<div class="banner bad"><b>Restarted.</b> ${esc(S.notice)}<button class="ghost" id="dismiss">Okay</button></div>` : ''}
+    ${complete ? `<div class="banner good"><b>Day ${dayNum} done.</b> Come back tomorrow.</div>` : ''}
+    ${due ? `<div class="banner"><b>Progress photo due.</b> ${S.photos.length ? `It's been a week since the last one.` : `Take your Day 1 photo.`}<button id="snap">Take photo</button></div>` : ''}
+
+    <div class="card ${(e.diet||e.dayOff)?'done':''}">
+      <div class="row ${e.dayOff?'':'tap'}" id="tDiet"><div class="chk">${(e.diet||e.dayOff)?'✓':''}</div><h2>${e.dayOff ? 'Diet day off' : 'Followed my diet'}</h2></div>
+      <p class="hint"><b>My diet:</b> ${esc(S.diet)} · <a href="#" id="editDiet">change</a></p>
+      <p class="hint">Your diet is your choice. It can be as small as cutting out bread or as strict as carnivore. You get one day off a week.</p>
+      ${e.dayOff ? `<button class="ghost" id="undoOff">Undo day off</button>` : (dayOffUsed(t) ? `<p class="hint">Day off already used this week.</p>` : `<button class="ghost" id="useOff">Use my day off today</button>`)}
+    </div>
+
+    <div class="card ${w.ok?'done':''}">
+      <div class="row"><div class="chk">${w.ok?'✓':''}</div><h2>Workout · ${w.total}/45 min</h2></div>
+      <p class="hint">45 min total, split between cardio and lifting. Yoga is fine, up to 15 of the 45 min.</p>
+      <div class="inputs">
+        <div><label>Cardio min</label><input type="number" inputmode="numeric" min="0" data-k="cardio" value="${e.cardio ?? ''}"></div>
+        <div><label>Lifting min</label><input type="number" inputmode="numeric" min="0" data-k="lift" value="${e.lift ?? ''}"></div>
+        <div><label>Yoga min</label><input type="number" inputmode="numeric" min="0" data-k="yoga" value="${e.yoga ?? ''}"></div>
+      </div>
+      ${!w.ok && w.msg && w.total ? `<p class="warn">${esc(w.msg)}</p>` : ''}
+    </div>
+
+    <div class="card ${e.read?'done':''}">
+      <div class="row tap" id="tRead"><div class="chk">${e.read?'✓':''}</div><h2>Read</h2></div>
+      <p class="hint">10 pages if you can, or 10 minutes if you're pressed on time. Be honest with yourself.</p>
+      <div class="seg">
+        <button class="${e.readMode==='pages'?'on':''}" data-m="pages">10 pages</button>
+        <button class="${e.readMode==='mins'?'on':''}" data-m="mins">10 minutes</button>
+      </div>
+    </div>
+
+    ${urls.length ? `<div class="card"><h2 style="font-size:17px;margin:0">Progress photos</h2><div class="photos">${urls.map(u=>`<figure><img src="${u.url}" alt=""><figcaption>${u.label}</figcaption></figure>`).join('')}</div></div>` : ''}
+
+    <p class="foot">Miss anything and you start over at Day 1.<br><a href="#" id="reset">Reset everything</a></p>
+  `;
+
+  $('#tDiet').onclick = () => { if (e.dayOff) return; e.diet = !e.diet; save(); render(); };
+  $('#editDiet').onclick = ev => { ev.preventDefault(); const v = prompt('What is your diet?', S.diet); if (v && v.trim()){ S.diet = v.trim(); save(); render(); } };
+  if ($('#useOff')) $('#useOff').onclick = () => { e.dayOff = true; e.diet = false; save(); render(); };
+  if ($('#undoOff')) $('#undoOff').onclick = () => { e.dayOff = false; save(); render(); };
+  $('#tRead').onclick = () => { if (!e.readMode) e.readMode = 'pages'; e.read = !e.read; save(); render(); };
+  app.querySelectorAll('.seg button').forEach(b => b.onclick = () => { e.readMode = b.dataset.m; save(); render(); });
+  app.querySelectorAll('input[data-k]').forEach(i => {
+    i.onchange = () => { e[i.dataset.k] = i.value === '' ? undefined : Math.max(0, +i.value); save(); render(); };
+  });
+  if ($('#dismiss')) $('#dismiss').onclick = () => { S.notice = null; save(); render(); };
+  if ($('#snap')) $('#snap').onclick = () => $('#cam').click();
+  $('#reset').onclick = ev => { ev.preventDefault(); if (confirm('Erase all progress and photos on this phone?')){ localStorage.removeItem(KEY); clearPhotos().then(() => { S = load(); render(); }); } };
+}
+
+function renderSetup(){
+  app.innerHTML = `
+    <h1>75 Hard</h1>
+    <p class="day" style="font-size:32px">Set up</p>
+    <div class="card"><label>Your name</label><input type="text" id="nm" value="${esc(S.name)}" autocomplete="given-name">
+    <label style="margin-top:12px">Your diet (your choice, it can be as small as no bread)</label><input type="text" id="dt" value="${esc(S.diet)}" placeholder="e.g. no bread, or carnivore">
+    <button id="go">Start Day 1</button></div>
+    <p class="hint">You get one diet day off a week. Each phone tracks its own progress, so you both get your own streak.</p>`;
+  $('#go').onclick = () => { const v = $('#nm').value.trim(), d = $('#dt').value.trim(); if (!v || !d) return; S.name = v; S.diet = d; S.startDate = today(); save(); render(); };
+}
+
+function renderDone(){
+  S.best = 75; save();
+  app.innerHTML = `<h1>${esc(S.name)}'s 75 Hard</h1><p class="day">Done.</p>
+    <div class="banner good" style="margin-top:20px"><b>75 days complete.</b> Every single day. Take a final photo and be proud of it.</div>
+    <button id="snap">Take final photo</button><button class="ghost" id="reset">Start over</button>`;
+  $('#snap').onclick = () => $('#cam').click();
+  $('#reset').onclick = () => { if (confirm('Start a fresh run?')){ S.startDate = today(); S.log = {}; S.photos = []; S.attempts++; clearPhotos().then(() => { save(); render(); }); } };
+}
+
+$('#cam').onchange = async ev => {
+  const f = ev.target.files[0]; ev.target.value = '';
+  if (!f) return;
+  const day = Math.min(75, daysBetween(S.startDate, today()) + 1);
+  const id = Date.now();
+  await putPhoto({ id, blob:f, day });
+  S.photos.push({ id, date:today(), day }); save(); render();
+};
+
+document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+render();
+</script>
+</body>
+</html>
